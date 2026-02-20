@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Interactive Bouquet Builder</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<header>
+  <h1>🌸 Interactive Bouquet Builder</h1>
+  <p>Design a bouquet with depth & emotion</p>
+</header>
+
+<main class="app">
+
+  <section class="canvas-section" id="exportArea">
+    <canvas id="bouquetCanvas" width="300" height="420"></canvas>
+  </section>
+
+  <section class="controls">
+
+    <div class="panel">
+      <h2>Flowers</h2>
+      <div class="carousel" id="flowerCarousel"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Vase</h2>
+      <div class="carousel" id="vaseCarousel"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Message</h2>
+      <input id="messageInput" type="text" placeholder="Your message..." />
+    </div>
+
+    <div class="panel buttons">
+      <button id="undoBtn">Undo</button>
+      <button id="redoBtn">Redo</button>
+      <button id="saveBtn">Save Image</button>
+    </div>
+
+  </section>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
