@@ -18,7 +18,27 @@ document.addEventListener("DOMContentLoaded", () => {
   let needsRender = true;
 
   /* =============================
-     FLOWERS (7)
+     RESPONSIVE CANVAS FIX
+  ============================== */
+
+  function resizeCanvas() {
+    const ratio = window.devicePixelRatio || 1;
+
+    const displayWidth = canvas.clientWidth;
+    const displayHeight = canvas.clientHeight;
+
+    canvas.width = displayWidth * ratio;
+    canvas.height = displayHeight * ratio;
+
+    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    needsRender = true;
+  }
+
+  window.addEventListener("resize", resizeCanvas);
+  resizeCanvas();
+
+  /* =============================
+     FLOWERS
   ============================== */
 
   const flowerList = [
@@ -30,10 +50,6 @@ document.addEventListener("DOMContentLoaded", () => {
     "assets/flowers/sunflower.png",
     "assets/flowers/daisy.png"
   ];
-
-  /* =============================
-     VASES (4)
-  ============================== */
 
   const vaseList = [
     "assets/vases/vase1.png",
@@ -65,7 +81,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   /* =============================
-     BUILD CAROUSELS
+     BUILD CAROUSEL
   ============================== */
 
   flowerList.forEach(src => {
@@ -142,23 +158,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Flowers
     state.flowers.forEach(f => {
       ctx.save();
       ctx.translate(f.x + f.w / 2, f.y + f.h / 2);
       ctx.scale(f.scale, f.scale);
       ctx.drawImage(f.img, -f.w / 2, -f.h / 2, f.w, f.h);
-
-      if (dragging === f) {
-        ctx.strokeStyle = "rgba(255,255,255,0.9)";
-        ctx.lineWidth = 2;
-        ctx.strokeRect(-f.w / 2 - 4, -f.h / 2 - 4, f.w + 8, f.h + 8);
-      }
-
       ctx.restore();
     });
 
-    // Vase
     if (state.vase) {
       ctx.shadowColor = "rgba(0,0,0,0.3)";
       ctx.shadowBlur = 20;
@@ -172,12 +179,11 @@ document.addEventListener("DOMContentLoaded", () => {
       ctx.shadowBlur = 0;
     }
 
-    // Message
     if (state.message) {
       ctx.fillStyle = "#fff";
       ctx.font = "18px cursive";
       const w = ctx.measureText(state.message).width;
-      ctx.fillText(state.message, (canvas.width - w) / 2, 400);
+      ctx.fillText(state.message, (canvas.width / (window.devicePixelRatio || 1) - w) / 2, 400);
     }
   }
 
@@ -196,25 +202,37 @@ document.addEventListener("DOMContentLoaded", () => {
     x > f.x && x < f.x + f.w &&
     y > f.y && y < f.y + f.h;
 
-  function startDrag(x, y) {
+  function getCoords(e) {
+    const rect = canvas.getBoundingClientRect();
+    if (e.touches) {
+      return {
+        x: e.touches[0].clientX - rect.left,
+        y: e.touches[0].clientY - rect.top
+      };
+    }
+    return { x: e.offsetX, y: e.offsetY };
+  }
+
+  function startDrag(e) {
+    const { x, y } = getCoords(e);
+
     for (let i = state.flowers.length - 1; i >= 0; i--) {
       const f = state.flowers[i];
       if (hit(x, y, f)) {
         dragging = f;
-        f.scale = f.scale;
         offsetX = x - f.x;
         offsetY = y - f.y;
         state.flowers.splice(i, 1);
         state.flowers.push(f);
-        canvas.style.cursor = "grabbing";
         needsRender = true;
         break;
       }
     }
   }
 
-  function moveDrag(x, y) {
+  function moveDrag(e) {
     if (!dragging) return;
+    const { x, y } = getCoords(e);
     dragging.x = snap(x - offsetX);
     dragging.y = snap(y - offsetY);
     needsRender = true;
@@ -222,48 +240,26 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function endDrag() {
     dragging = null;
-    canvas.style.cursor = "grab";
-    needsRender = true;
   }
 
-  canvas.addEventListener("mousedown", e =>
-    startDrag(e.offsetX, e.offsetY)
-  );
-
-  canvas.addEventListener("mousemove", e =>
-    moveDrag(e.offsetX, e.offsetY)
-  );
-
+  canvas.addEventListener("mousedown", startDrag);
+  canvas.addEventListener("mousemove", moveDrag);
   canvas.addEventListener("mouseup", endDrag);
   canvas.addEventListener("mouseleave", endDrag);
 
-  canvas.addEventListener("touchstart", e => {
-    const t = e.touches[0];
-    const r = canvas.getBoundingClientRect();
-    startDrag(t.clientX - r.left, t.clientY - r.top);
-  });
-
-  canvas.addEventListener("touchmove", e => {
-    const t = e.touches[0];
-    const r = canvas.getBoundingClientRect();
-    moveDrag(t.clientX - r.left, t.clientY - r.top);
-  });
-
+  canvas.addEventListener("touchstart", startDrag);
+  canvas.addEventListener("touchmove", moveDrag);
   canvas.addEventListener("touchend", endDrag);
 
   /* =============================
-     RESIZE ENGINE (SCROLL)
+     RESIZE
   ============================== */
 
   canvas.addEventListener("wheel", (e) => {
     e.preventDefault();
+    const { x, y } = getCoords(e);
 
-    const x = e.offsetX;
-    const y = e.offsetY;
-
-    // Resize flower
-    for (let i = state.flowers.length - 1; i >= 0; i--) {
-      const f = state.flowers[i];
+    for (let f of state.flowers) {
       if (hit(x, y, f)) {
         saveHistory();
         const delta = e.deltaY < 0 ? 0.1 : -0.1;
@@ -272,19 +268,6 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
     }
-
-    // Resize vase
-    if (state.vase) {
-      const v = state.vase;
-      if (x > v.x && x < v.x + v.w && y > v.y && y < v.y + v.h) {
-        saveHistory();
-        const delta = e.deltaY < 0 ? 10 : -10;
-        v.w = Math.max(100, Math.min(350, v.w + delta));
-        v.h = Math.max(100, Math.min(350, v.h + delta));
-        needsRender = true;
-      }
-    }
-
   });
 
   /* =============================
@@ -312,7 +295,7 @@ document.addEventListener("DOMContentLoaded", () => {
   };
 
   /* =============================
-     SAVE IMAGE
+     SAVE
   ============================== */
 
   document.getElementById("saveBtn").onclick = () => {
