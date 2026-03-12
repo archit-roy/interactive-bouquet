@@ -429,49 +429,18 @@ function drawSnapGuide(){
 }
 function drawCard(){
   const m=state.message;if(!m.text&&!m.to&&!m.from)return;
-  const dpr=DPR(),cw=canvas.width/dpr;
-  const fm=CARD_FONTS.find(f=>f.id===m.font)||CARD_FONTS[0];
-  const pw=190, padX=12, msgFontSize=12, lh=17;
-
-  // Measure how many lines the message needs BEFORE drawing
-  ctx.font=`italic ${msgFontSize}px ${fm.style}`;
-  const msgLines=m.text?wrapLines(ctx,m.text,pw-padX*2):[];
-  const toH   = m.to   ? 20 : 0;
-  const msgH  = msgLines.length * lh;
-  const fromH = m.from ? 20 : 0;
-  const innerH= toH + (msgH>0?msgH+6:0) + fromH + 16; // 16 = top+bottom padding
-  const ph    = Math.max(innerH, 52);
-
-  const px=cw-pw-14, py=14;
-  ctx.save();
-  ctx.shadowColor='rgba(0,0,0,.3)';ctx.shadowBlur=12;ctx.shadowOffsetY=3;
-  ctx.fillStyle='#f8f4ec';rRect(ctx,px,py,pw,ph,4);ctx.fill();
-  ctx.shadowColor='transparent';
+  const dpr=DPR(),cw=canvas.width/dpr,pw=152,ph=82,px=cw-pw-14,py=14;
+  ctx.save();ctx.shadowColor='rgba(0,0,0,.3)';ctx.shadowBlur=12;ctx.shadowOffsetY=3;
+  ctx.fillStyle='#f8f4ec';rRect(ctx,px,py,pw,ph,4);ctx.fill();ctx.shadowColor='transparent';
   ctx.strokeStyle='rgba(201,168,76,.28)';ctx.lineWidth=1;rRect(ctx,px+4,py+4,pw-8,ph-8,2);ctx.stroke();
-
-  let curY=py+14;
-  if(m.to){
-    ctx.font=`italic 10px ${fm.style}`;ctx.fillStyle='#999';
-    ctx.fillText('To: '+m.to,px+padX,curY+10);
-    curY+=toH;
-  }
-  if(msgLines.length){
-    curY+=4;
-    ctx.font=`italic ${msgFontSize}px ${fm.style}`;ctx.fillStyle='#2c2c2c';
-    msgLines.forEach((l,i)=>ctx.fillText(l,px+padX,curY+(i+1)*lh));
-    curY+=msgLines.length*lh+4;
-  }
-  if(m.from){
-    ctx.font=`10px ${fm.style}`;ctx.fillStyle='#999';
-    const fw=ctx.measureText('— '+m.from).width;
-    ctx.fillText('— '+m.from,px+pw-padX-fw,py+ph-10);
-  }
+  const fm=CARD_FONTS.find(f=>f.id===m.font)||CARD_FONTS[0];
+  if(m.to){ctx.font=`italic 10px ${fm.style}`;ctx.fillStyle='#888';ctx.fillText('To: '+m.to,px+10,py+16);}
+  if(m.text){ctx.font=`italic 13px ${fm.style}`;ctx.fillStyle='#2c2c2c';wrapTxt(ctx,m.text,px+10,py+32,pw-20,15);}
+  if(m.from){ctx.font=`10px ${fm.style}`;ctx.fillStyle='#888';const fw=ctx.measureText('— '+m.from).width;ctx.fillText('— '+m.from,px+pw-10-fw,py+ph-10);}
   ctx.restore();
 }
 function rRect(c,x,y,w,h,r){c.beginPath();c.moveTo(x+r,y);c.lineTo(x+w-r,y);c.quadraticCurveTo(x+w,y,x+w,y+r);c.lineTo(x+w,y+h-r);c.quadraticCurveTo(x+w,y+h,x+w-r,y+h);c.lineTo(x+r,y+h);c.quadraticCurveTo(x,y+h,x,y+h-r);c.lineTo(x,y+r);c.quadraticCurveTo(x,y,x+r,y);c.closePath();}
-// Returns all wrapped lines without a line cap
-function wrapLines(c,text,mw){const words=text.split(' ');let line='',lines=[];for(const w of words){const t=line+w+' ';if(c.measureText(t).width>mw&&line){lines.push(line.trim());line=w+' ';}else line=t;}if(line.trim())lines.push(line.trim());return lines;}
-function wrapTxt(c,text,x,y,mw,lh){wrapLines(c,text,mw).forEach((l,i)=>c.fillText(l,x,y+i*lh));}
+function wrapTxt(c,text,x,y,mw,lh){const words=text.split(' ');let line='',lines=[];for(const w of words){const t=line+w+' ';if(c.measureText(t).width>mw&&line){lines.push(line.trim());line=w+' ';}else line=t;}if(line)lines.push(line.trim());lines.slice(0,3).forEach((l,i)=>c.fillText(l,x,y+i*lh));}
 
 // ══ RENDER ════════════════════════════════════════════════════
 function render(){
