@@ -429,18 +429,49 @@ function drawSnapGuide(){
 }
 function drawCard(){
   const m=state.message;if(!m.text&&!m.to&&!m.from)return;
-  const dpr=DPR(),cw=canvas.width/dpr,pw=152,ph=82,px=cw-pw-14,py=14;
-  ctx.save();ctx.shadowColor='rgba(0,0,0,.3)';ctx.shadowBlur=12;ctx.shadowOffsetY=3;
-  ctx.fillStyle='#f8f4ec';rRect(ctx,px,py,pw,ph,4);ctx.fill();ctx.shadowColor='transparent';
-  ctx.strokeStyle='rgba(201,168,76,.28)';ctx.lineWidth=1;rRect(ctx,px+4,py+4,pw-8,ph-8,2);ctx.stroke();
+  const dpr=DPR(),cw=canvas.width/dpr;
   const fm=CARD_FONTS.find(f=>f.id===m.font)||CARD_FONTS[0];
-  if(m.to){ctx.font=`italic 10px ${fm.style}`;ctx.fillStyle='#888';ctx.fillText('To: '+m.to,px+10,py+16);}
-  if(m.text){ctx.font=`italic 13px ${fm.style}`;ctx.fillStyle='#2c2c2c';wrapTxt(ctx,m.text,px+10,py+32,pw-20,15);}
-  if(m.from){ctx.font=`10px ${fm.style}`;ctx.fillStyle='#888';const fw=ctx.measureText('— '+m.from).width;ctx.fillText('— '+m.from,px+pw-10-fw,py+ph-10);}
+  const pw=190, padX=12, msgFontSize=12, lh=17;
+
+  // Measure how many lines the message needs BEFORE drawing
+  ctx.font=`italic ${msgFontSize}px ${fm.style}`;
+  const msgLines=m.text?wrapLines(ctx,m.text,pw-padX*2):[];
+  const toH   = m.to   ? 20 : 0;
+  const msgH  = msgLines.length * lh;
+  const fromH = m.from ? 20 : 0;
+  const innerH= toH + (msgH>0?msgH+6:0) + fromH + 16; // 16 = top+bottom padding
+  const ph    = Math.max(innerH, 52);
+
+  const px=cw-pw-14, py=14;
+  ctx.save();
+  ctx.shadowColor='rgba(0,0,0,.3)';ctx.shadowBlur=12;ctx.shadowOffsetY=3;
+  ctx.fillStyle='#f8f4ec';rRect(ctx,px,py,pw,ph,4);ctx.fill();
+  ctx.shadowColor='transparent';
+  ctx.strokeStyle='rgba(201,168,76,.28)';ctx.lineWidth=1;rRect(ctx,px+4,py+4,pw-8,ph-8,2);ctx.stroke();
+
+  let curY=py+14;
+  if(m.to){
+    ctx.font=`italic 10px ${fm.style}`;ctx.fillStyle='#999';
+    ctx.fillText('To: '+m.to,px+padX,curY+10);
+    curY+=toH;
+  }
+  if(msgLines.length){
+    curY+=4;
+    ctx.font=`italic ${msgFontSize}px ${fm.style}`;ctx.fillStyle='#2c2c2c';
+    msgLines.forEach((l,i)=>ctx.fillText(l,px+padX,curY+(i+1)*lh));
+    curY+=msgLines.length*lh+4;
+  }
+  if(m.from){
+    ctx.font=`10px ${fm.style}`;ctx.fillStyle='#999';
+    const fw=ctx.measureText('— '+m.from).width;
+    ctx.fillText('— '+m.from,px+pw-padX-fw,py+ph-10);
+  }
   ctx.restore();
 }
 function rRect(c,x,y,w,h,r){c.beginPath();c.moveTo(x+r,y);c.lineTo(x+w-r,y);c.quadraticCurveTo(x+w,y,x+w,y+r);c.lineTo(x+w,y+h-r);c.quadraticCurveTo(x+w,y+h,x+w-r,y+h);c.lineTo(x+r,y+h);c.quadraticCurveTo(x,y+h,x,y+h-r);c.lineTo(x,y+r);c.quadraticCurveTo(x,y,x+r,y);c.closePath();}
-function wrapTxt(c,text,x,y,mw,lh){const words=text.split(' ');let line='',lines=[];for(const w of words){const t=line+w+' ';if(c.measureText(t).width>mw&&line){lines.push(line.trim());line=w+' ';}else line=t;}if(line)lines.push(line.trim());lines.slice(0,3).forEach((l,i)=>c.fillText(l,x,y+i*lh));}
+// Returns all wrapped lines without a line cap
+function wrapLines(c,text,mw){const words=text.split(' ');let line='',lines=[];for(const w of words){const t=line+w+' ';if(c.measureText(t).width>mw&&line){lines.push(line.trim());line=w+' ';}else line=t;}if(line.trim())lines.push(line.trim());return lines;}
+function wrapTxt(c,text,x,y,mw,lh){wrapLines(c,text,mw).forEach((l,i)=>c.fillText(l,x,y+i*lh));}
 
 // ══ RENDER ════════════════════════════════════════════════════
 function render(){
@@ -732,22 +763,47 @@ document.getElementById('btnClear').addEventListener('click',()=>{if(!state.flow
 document.getElementById('btnRandom').addEventListener('click',randomiseBouquet);
 document.getElementById('btnRandomMob').addEventListener('click',randomiseBouquet);
 function doSave(){
-  // canvas is already at full physical pixel resolution (CSS size x devicePixelRatio).
-  // Just copy it to an offscreen canvas and add the export frame.
   const dpr=DPR();
   const cssW=canvas.width/dpr, cssH=canvas.height/dpr;
   const oc=document.createElement('canvas');
-  oc.width=canvas.width;
-  oc.height=canvas.height;
+  oc.width=canvas.width; oc.height=canvas.height;
   const oc2=oc.getContext('2d');
   oc2.drawImage(canvas,0,0);
   oc2.setTransform(dpr,0,0,dpr,0,0);
   drawExportFrame(oc2,cssW,cssH,state.frame);
-  const a=document.createElement('a');
-  a.download='bouquet-studio.png';
-  a.href=oc.toDataURL('image/png',1.0);
-  a.click();
-  toast('Saved ✓');
+  const dataURL=oc.toDataURL('image/png',1.0);
+
+  // iOS Safari silently ignores <a download> clicks — open image in new tab instead
+  const isIOS=/iPad|iPhone|iPod/.test(navigator.userAgent)||
+    (navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+
+  if(isIOS){
+    const w=window.open('','_blank');
+    if(w){
+      w.document.write(
+        '<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"/>'+
+        '<style>body{margin:0;background:#111;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh}'+
+        'img{max-width:100%;height:auto;display:block;border-radius:4px}'+
+        'p{color:#c9a84c;font-family:sans-serif;font-size:15px;text-align:center;padding:16px;margin:0}'+
+        '</style></head><body>'+
+        '<img src="'+dataURL+'"/>'+
+        '<p>Press &amp; hold the image → Save to Photos</p>'+
+        '</body></html>'
+      );
+      w.document.close();
+    } else {
+      window.location.href=dataURL;
+    }
+    toast('Hold image → Save to Photos');
+  } else {
+    const a=document.createElement('a');
+    a.download='bouquet-studio.png';
+    a.href=dataURL;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    toast('Saved ✓');
+  }
 }
 document.getElementById('btnSave').addEventListener('click',doSave);
 document.getElementById('btnSaveMob').addEventListener('click',doSave);
