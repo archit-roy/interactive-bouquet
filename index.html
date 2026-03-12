@@ -362,7 +362,7 @@ function drawExportFrame(c,w,h,id){
 
 // ══ SNAP TO STEM ══════════════════════════════════════════════
 function getVaseMouth(){
-  const cw=canvas.width,ch=canvas.height,sc=state.vase.scale;
+  const dpr=DPR(),cw=canvas.width/dpr,ch=canvas.height/dpr,sc=state.vase.scale;
   if(state.vase.type==='none')return null;
   const heights={classic:178,cylinder:198,bulb:198,tall:238,wide:158};
   const mouthY=ch-8-(heights[state.vase.type]||160)*sc;
@@ -408,7 +408,7 @@ function dLily(f,s,pc){const c=f.petalColor||'#c084fc';for(let i=0;i<pc;i++){ctx
 function dSunflower(f,s,pc){const c=f.petalColor||'#fbbf24';for(let i=0;i<pc+4;i++){ctx.save();ctx.rotate((i/(pc+4))*Math.PI*2);ctx.beginPath();ctx.ellipse(0,-f.size*.52,f.size*.11,f.size*.3,0,0,Math.PI*2);ctx.fillStyle=c;ctx.globalAlpha=.85;ctx.fill();ctx.restore();}const g=ctx.createRadialGradient(0,0,0,0,0,f.size*.26);g.addColorStop(0,'#4a1505');g.addColorStop(1,'#92400e');ctx.beginPath();ctx.arc(0,0,f.size*.26,0,Math.PI*2);ctx.fillStyle=g;ctx.globalAlpha=1;ctx.fill();}
 function dLavender(f,s){const c=f.petalColor||'#a78bfa',sl=f.size;for(let i=0;i<8;i++){const t=i/8,side=i%2===0?-1:1,y=-sl*.6-t*sl*.35;ctx.beginPath();ctx.ellipse(side*f.size*.12,y,f.size*.1,f.size*.14,side*.3,0,Math.PI*2);ctx.fillStyle=i<3?darken(c,10):c;ctx.globalAlpha=.82;ctx.fill();}ctx.beginPath();ctx.ellipse(0,-sl*.95,f.size*.09,f.size*.16,0,0,Math.PI*2);ctx.fillStyle=lighten(c,15);ctx.globalAlpha=.8;ctx.fill();}
 function drawVase(v){
-  if(v.type==='none')return;const cw=canvas.width,ch=canvas.height,sc=v.scale;
+  if(v.type==='none')return;const dpr=DPR(),cw=canvas.width/dpr,ch=canvas.height/dpr,sc=v.scale;
   ctx.save();ctx.translate(cw/2,ch-8);
   const g=ctx.createLinearGradient(-80*sc,0,80*sc,0);g.addColorStop(0,darken(v.color,20));g.addColorStop(.3,lighten(v.color,15));g.addColorStop(.7,v.color);g.addColorStop(1,darken(v.color,30));
   ctx.fillStyle=g;ctx.strokeStyle=lighten(v.color,10);ctx.lineWidth=1;ctx.globalAlpha=1;
@@ -429,7 +429,7 @@ function drawSnapGuide(){
 }
 function drawCard(){
   const m=state.message;if(!m.text&&!m.to&&!m.from)return;
-  const cw=canvas.width,pw=152,ph=82,px=cw-pw-14,py=14;
+  const dpr=DPR(),cw=canvas.width/dpr,pw=152,ph=82,px=cw-pw-14,py=14;
   ctx.save();ctx.shadowColor='rgba(0,0,0,.3)';ctx.shadowBlur=12;ctx.shadowOffsetY=3;
   ctx.fillStyle='#f8f4ec';rRect(ctx,px,py,pw,ph,4);ctx.fill();ctx.shadowColor='transparent';
   ctx.strokeStyle='rgba(201,168,76,.28)';ctx.lineWidth=1;rRect(ctx,px+4,py+4,pw-8,ph-8,2);ctx.stroke();
@@ -444,7 +444,7 @@ function wrapTxt(c,text,x,y,mw,lh){const words=text.split(' ');let line='',lines
 
 // ══ RENDER ════════════════════════════════════════════════════
 function render(){
-  const cw=canvas.width,ch=canvas.height;
+  const dpr=DPR(),cw=canvas.width/dpr,ch=canvas.height/dpr;
   ctx.clearRect(0,0,cw,ch);
   drawBg(ctx,cw,ch,state.bg);
   drawSnapGuide();
@@ -456,12 +456,19 @@ function render(){
 }
 
 // ══ CANVAS SIZE ═══════════════════════════════════════════════
+const DPR=()=>Math.min(window.devicePixelRatio||1,3);
 function sizeCanvas(){
   const area=document.getElementById('canvasArea'),ar=area.getBoundingClientRect();
   const mob=window.innerWidth<=700;
   if(mob){frameEl.style.width=ar.width+'px';frameEl.style.height=ar.height+'px';}
   else{const mw=Math.min(ar.width-40,560),mh=Math.min(ar.height-40,640),ratio=.88;let w=mw,h=w/ratio;if(h>mh){h=mh;w=h*ratio;}frameEl.style.width=w+'px';frameEl.style.height=h+'px';}
-  const r=frameEl.getBoundingClientRect();canvas.width=r.width;canvas.height=r.height;render();
+  const r=frameEl.getBoundingClientRect(),dpr=DPR();
+  canvas.width=Math.round(r.width*dpr);
+  canvas.height=Math.round(r.height*dpr);
+  canvas.style.width=r.width+'px';
+  canvas.style.height=r.height+'px';
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  render();
 }
 
 // ══ HIT TEST ══════════════════════════════════════════════════
@@ -535,7 +542,7 @@ function d2t(t1,t2){const dx=t1.clientX-t2.clientX,dy=t1.clientY-t2.clientY;retu
 // ══ RANDOMISE ═════════════════════════════════════════════════
 function randomiseBouquet(){
   snapshot();selectedFlower=null;updatePill('Place',false);state.flowers=[];
-  const cw=canvas.width,ch=canvas.height,mouth=getVaseMouth()||{x:cw/2,y:ch*.55};
+  const dpr=DPR(),cw=canvas.width/dpr,ch=canvas.height/dpr,mouth=getVaseMouth()||{x:cw/2,y:ch*.55};
   const count=9+Math.floor(Math.random()*6);
   for(let i=0;i<count;i++){
     const angle=-Math.PI/2+(-Math.PI/3+(i/count)*Math.PI*2/3);
@@ -724,7 +731,24 @@ document.getElementById('btnRedo').addEventListener('click',()=>{if(!redoStack.l
 document.getElementById('btnClear').addEventListener('click',()=>{if(!state.flowers.length)return;snapshot();state.flowers=[];selectedFlower=null;updatePill('Place',false);buildFlowersPanel(document.getElementById('flowersPanel'));render();toast('Canvas cleared');});
 document.getElementById('btnRandom').addEventListener('click',randomiseBouquet);
 document.getElementById('btnRandomMob').addEventListener('click',randomiseBouquet);
-function doSave(){const oc=document.createElement('canvas');oc.width=canvas.width;oc.height=canvas.height;const oc2=oc.getContext('2d');oc2.drawImage(canvas,0,0);drawExportFrame(oc2,oc.width,oc.height,state.frame);const a=document.createElement('a');a.download='bouquet-studio.png';a.href=oc.toDataURL('image/png');a.click();toast('Saved ✓');}
+function doSave(){
+  // canvas is already at full physical pixel resolution (CSS size x devicePixelRatio).
+  // Just copy it to an offscreen canvas and add the export frame.
+  const dpr=DPR();
+  const cssW=canvas.width/dpr, cssH=canvas.height/dpr;
+  const oc=document.createElement('canvas');
+  oc.width=canvas.width;
+  oc.height=canvas.height;
+  const oc2=oc.getContext('2d');
+  oc2.drawImage(canvas,0,0);
+  oc2.setTransform(dpr,0,0,dpr,0,0);
+  drawExportFrame(oc2,cssW,cssH,state.frame);
+  const a=document.createElement('a');
+  a.download='bouquet-studio.png';
+  a.href=oc.toDataURL('image/png',1.0);
+  a.click();
+  toast('Saved ✓');
+}
 document.getElementById('btnSave').addEventListener('click',doSave);
 document.getElementById('btnSaveMob').addEventListener('click',doSave);
 document.getElementById('themeToggle').addEventListener('click',()=>{isDark=!isDark;document.body.classList.toggle('light',!isDark);render();});
