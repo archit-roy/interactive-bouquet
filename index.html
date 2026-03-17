@@ -276,11 +276,12 @@ const BG_PRESETS=[{id:'forest',name:'Dark Forest'},{id:'ivory',name:'Ivory Linen
 const FRAME_PRESETS=[{id:'none',name:'None'},{id:'thin',name:'Gold Line'},{id:'double',name:'Double'},{id:'ornate',name:'Ornate'}];
 
 // ══ STATE ═════════════════════════════════════════════════════
-let state={flowers:[],vase:{type:'classic',color:'#1e293b',scale:1.0},message:{from:'',to:'',text:'',font:'cormorant'},bg:'forest',frame:'thin'};
+let state={flowers:[],vase:{type:'classic',color:'#1e293b',scale:1.0},message:{from:'',to:'',text:'',font:'cormorant'},bg:'forest',frame:'thin',cardPos:{x:null,y:null}};
 let selectedFlowerType='rose',selectedPetalColor='#e84a7a',selectedStemColor='#166534';
 let flowerSize=48,flowerRot=0,petalCount=6;
 let undoStack=[],redoStack=[];
 let dragging=null,dragOffX=0,dragOffY=0,hoveredFlower=null,selectedFlower=null;
+let draggingCard=false,cardDragOffX=0,cardDragOffY=0,cardHovered=false,lastCardBounds=null;
 let rotating=null,rotStartAngle=0,rotStartRot=0; // drag-to-rotate state
 let isDark=true;
 let touchId=null,longPressTimer=null,pinchStartDist=null,pinchFlower=null,touchMoved=false;
@@ -446,37 +447,57 @@ function drawSnapGuide(){
   ctx.strokeStyle='rgba(201,168,76,.15)';ctx.lineWidth=1;ctx.setLineDash([4,4]);ctx.stroke();ctx.setLineDash([]);
   ctx.restore();
 }
-function drawCard(){
-  const m=state.message;if(!m.text&&!m.to&&!m.from)return;
-  const dpr=DPR(),cw=canvas.width/dpr;
+function cardBounds(){
+  // Returns {px,py,pw,ph} in CSS pixels; null if no content
+  const m=state.message;if(!m.text&&!m.to&&!m.from)return null;
+  const dpr=DPR(),cw=canvas.width/dpr,ch=canvas.height/dpr;
   const fm=CARD_FONTS.find(f=>f.id===m.font)||CARD_FONTS[0];
-  const pw=190, padX=12, msgFontSize=12, lh=17;
-
-  // Measure how many lines the message needs BEFORE drawing
+  const pw=190,padX=12,msgFontSize=12,lh=17;
   ctx.font=`italic ${msgFontSize}px ${fm.style}`;
   const msgLines=m.text?wrapLines(ctx,m.text,pw-padX*2):[];
-  const toH   = m.to   ? 20 : 0;
-  const msgH  = msgLines.length * lh;
-  const fromH = m.from ? 20 : 0;
-  const innerH= toH + (msgH>0?msgH+6:0) + fromH + 16; // 16 = top+bottom padding
-  const ph    = Math.max(innerH, 52);
-
-  const px=cw-pw-14, py=14;
+  const toH=m.to?20:0,msgH=msgLines.length*lh,fromH=m.from?20:0;
+  const innerH=toH+(msgH>0?msgH+6:0)+fromH+16;
+  const ph=Math.max(innerH,52);
+  // default: top-right, 14px from edges
+  const defX=cw-pw-14, defY=14;
+  const px=state.cardPos.x!==null ? Math.max(0,Math.min(cw-pw, state.cardPos.x)) : defX;
+  const py=state.cardPos.y!==null ? Math.max(0,Math.min(ch-ph, state.cardPos.y)) : defY;
+  return{px,py,pw,ph,padX,msgFontSize,lh,msgLines,toH,fromH,fm};
+}
+function hitTestCard(x,y){
+  const b=cardBounds();if(!b)return false;
+  return x>=b.px&&x<=b.px+b.pw&&y>=b.py&&y<=b.py+b.ph;
+}
+function drawCard(){
+  const m=state.message;if(!m.text&&!m.to&&!m.from){lastCardBounds=null;return;}
+  const b=cardBounds();if(!b)return;
+  const{px,py,pw,ph,padX,msgFontSize,lh,msgLines,toH,fromH,fm}=b;
+  lastCardBounds=b;
   ctx.save();
+  // card shadow
   ctx.shadowColor='rgba(0,0,0,.3)';ctx.shadowBlur=12;ctx.shadowOffsetY=3;
   ctx.fillStyle='#f8f4ec';rRect(ctx,px,py,pw,ph,4);ctx.fill();
   ctx.shadowColor='transparent';
+  // inner border
   ctx.strokeStyle='rgba(201,168,76,.28)';ctx.lineWidth=1;rRect(ctx,px+4,py+4,pw-8,ph-8,2);ctx.stroke();
-
-  let curY=py+14;
+  // hover / drag outline
+  if(draggingCard||cardHovered){
+    ctx.strokeStyle=draggingCard?'rgba(201,168,76,.8)':'rgba(201,168,76,.4)';
+    ctx.lineWidth=draggingCard?2:1.5;ctx.setLineDash(draggingCard?[]:[4,3]);
+    rRect(ctx,px-1,py-1,pw+2,ph+2,5);ctx.stroke();ctx.setLineDash([]);
+  }
+  // drag grip dots (top-centre)
+  const gripX=px+pw/2, gripY=py+7;
+  ctx.fillStyle=draggingCard?'rgba(201,168,76,.9)':'rgba(160,140,100,.5)';
+  [-6,-2,2,6].forEach(dx=>{ctx.beginPath();ctx.arc(gripX+dx,gripY,1.5,0,Math.PI*2);ctx.fill();});
+  // text content
+  let curY=py+16;
   if(m.to){
     ctx.font=`italic 10px ${fm.style}`;ctx.fillStyle='#999';
-    ctx.fillText('To: '+m.to,px+padX,curY+10);
-    curY+=toH;
+    ctx.fillText('To: '+m.to,px+padX,curY+10);curY+=toH;
   }
   if(msgLines.length){
-    curY+=4;
-    ctx.font=`italic ${msgFontSize}px ${fm.style}`;ctx.fillStyle='#2c2c2c';
+    curY+=4;ctx.font=`italic ${msgFontSize}px ${fm.style}`;ctx.fillStyle='#2c2c2c';
     msgLines.forEach((l,i)=>ctx.fillText(l,px+padX,curY+(i+1)*lh));
     curY+=msgLines.length*lh+4;
   }
@@ -565,39 +586,54 @@ function updHist(){document.getElementById('btnUndo').disabled=!undoStack.length
 canvas.addEventListener('mousedown',e=>{
   if(e.button===2)return;
   const r=canvas.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;
-  // Check rotate handle first (only when a flower is selected)
+  // 1. Card drag
+  if(hitTestCard(x,y)){
+    const b=cardBounds();
+    draggingCard=true;cardDragOffX=x-b.px;cardDragOffY=y-b.py;
+    canvas.style.cursor='grabbing';return;
+  }
+  // 2. Rotate handle
   if(hitRotHandle(x,y)){
     rotating=selectedFlower;
     rotStartAngle=Math.atan2(y-rotating.y,x-rotating.x);
     rotStartRot=rotating.rot||0;
     snapshot();canvas.style.cursor='alias';return;
   }
+  // 3. Flowers
   const hit=hitTest(x,y);
   if(hit){dragging=hit;dragOffX=x-hit.x;dragOffY=y-hit.y;state.flowers=state.flowers.filter(f=>f!==hit);state.flowers.push(hit);snapshot();canvas.style.cursor='grabbing';selectFlower(hit);}
   else{deselect();const snap=snapToStem(x,y);snapshot();state.flowers.push({id:Date.now(),type:selectedFlowerType,x:snap.x,y:snap.y,petalColor:selectedPetalColor,stemColor:selectedStemColor,size:flowerSize,rot:snap.rot,petalCount});if(snap.snapped)toast('Snapped to stem');document.getElementById('statusMode').textContent='Placed '+selectedFlowerType;render();}
 });
 canvas.addEventListener('mousemove',e=>{
   const r=canvas.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;
+  if(draggingCard){
+    const dpr=DPR(),cw=canvas.width/dpr,ch=canvas.height/dpr;
+    const b=cardBounds();
+    state.cardPos.x=Math.max(0,Math.min(cw-b.pw, x-cardDragOffX));
+    state.cardPos.y=Math.max(0,Math.min(ch-b.ph, y-cardDragOffY));
+    canvas.style.cursor='grabbing';render();return;
+  }
   if(rotating){
     const angle=Math.atan2(y-rotating.y,x-rotating.x);
     const delta=(angle-rotStartAngle)*180/Math.PI;
     rotating.rot=((rotStartRot+delta)%360+360)%360;
-    // sync rotation slider in edit panel if visible
     const sliders=document.querySelectorAll('#flowersPanel input[type=range], #sheetContent input[type=range]');
     sliders.forEach(sl=>{if(sl._isRotSlider){sl.value=Math.round(rotating.rot<=180?rotating.rot:rotating.rot-360);const lv=sl.parentElement.querySelector('span:last-child');if(lv)lv.textContent=sl.value+'°';}});
     canvas.style.cursor='alias';render();return;
   }
   if(dragging){dragging.x=x-dragOffX;dragging.y=y-dragOffY;render();}
   else{
-    const h=hitTest(x,y);
-    const onHandle=hitRotHandle(x,y);
-    const prev=hoveredFlower;hoveredFlower=h;
-    canvas.style.cursor=onHandle?'alias':h?'grab':'crosshair';
-    if(h!==prev||onHandle)render();
+    const onCard=hitTestCard(x,y);
+    const h=onCard?null:hitTest(x,y);
+    const onHandle=!onCard&&hitRotHandle(x,y);
+    const prev=hoveredFlower;const prevCard=cardHovered;
+    hoveredFlower=h;cardHovered=onCard;
+    canvas.style.cursor=onCard?'grab':onHandle?'alias':h?'grab':'crosshair';
+    if(h!==prev||onCard!==prevCard||onHandle)render();
   }
 });
-canvas.addEventListener('mouseup',()=>{if(rotating){rotating=null;}dragging=null;canvas.style.cursor=selectedFlower?'alias':'crosshair';});
-canvas.addEventListener('mouseleave',()=>{dragging=null;hoveredFlower=null;render();});
+canvas.addEventListener('mouseup',()=>{if(rotating){rotating=null;}if(draggingCard){draggingCard=false;}dragging=null;canvas.style.cursor=selectedFlower?'alias':'crosshair';});
+canvas.addEventListener('mouseleave',()=>{dragging=null;draggingCard=false;hoveredFlower=null;cardHovered=false;render();});
 canvas.addEventListener('contextmenu',e=>{
   e.preventDefault();const r=canvas.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top,h=hitTest(x,y);
   if(h){snapshot();if(selectedFlower===h)selectFlower(null);state.flowers=state.flowers.filter(f=>f!==h);hoveredFlower=null;render();toast('Removed');}
@@ -612,6 +648,9 @@ canvas.addEventListener('touchstart',e=>{
   e.preventDefault();
   if(e.touches.length===2){clearTimeout(longPressTimer);const r=canvas.getBoundingClientRect(),mid={x:(e.touches[0].clientX+e.touches[1].clientX)/2-r.left,y:(e.touches[0].clientY+e.touches[1].clientY)/2-r.top};pinchFlower=dragging||hitTest(mid.x,mid.y);pinchStartDist=d2t(e.touches[0],e.touches[1]);if(pinchFlower)snapshot();dragging=null;return;}
   const t=e.touches[0];touchId=t.identifier;touchMoved=false;const{x,y}=tp(t),hit=hitTest(x,y);
+  if(hitTestCard(x,y)){
+    const b=cardBounds();draggingCard=true;cardDragOffX=x-b.px;cardDragOffY=y-b.py;touchMoved=true;return;
+  }
   if(hitRotHandle(x,y)){rotating=selectedFlower;rotStartAngle=Math.atan2(y-rotating.y,x-rotating.x);rotStartRot=rotating.rot||0;snapshot();touchMoved=true;return;}
   if(hit){dragging=hit;dragOffX=x-hit.x;dragOffY=y-hit.y;state.flowers=state.flowers.filter(f=>f!==hit);state.flowers.push(hit);snapshot();selectFlower(hit);longPressTimer=setTimeout(()=>{if(!touchMoved){snapshot();if(selectedFlower===hit)selectFlower(null);state.flowers=state.flowers.filter(f=>f!==hit);dragging=null;hoveredFlower=null;render();toast('Removed');longPressTimer=null;}},600);}
   else{longPressTimer=setTimeout(()=>{longPressTimer=null;},600);}
@@ -619,11 +658,13 @@ canvas.addEventListener('touchstart',e=>{
 canvas.addEventListener('touchmove',e=>{
   e.preventDefault();
   if(e.touches.length===2&&pinchFlower&&pinchStartDist){const d=d2t(e.touches[0],e.touches[1]);pinchFlower.size=Math.max(18,Math.min(100,pinchFlower.size*(d/pinchStartDist)));pinchStartDist=d;render();return;}
-  for(let i=0;i<e.changedTouches.length;i++){const t=e.changedTouches[i];if(t.identifier!==touchId)continue;const{x,y}=tp(t);if(rotating){const angle=Math.atan2(y-rotating.y,x-rotating.x);const delta=(angle-rotStartAngle)*180/Math.PI;rotating.rot=((rotStartRot+delta)%360+360)%360;render();continue;}const d=Math.abs(x-(dragging?dragging.x+dragOffX:x))+Math.abs(y-(dragging?dragging.y+dragOffY:y));if(d>6)touchMoved=true;if(dragging){dragging.x=x-dragOffX;dragging.y=y-dragOffY;render();}}
+  for(let i=0;i<e.changedTouches.length;i++){const t=e.changedTouches[i];if(t.identifier!==touchId)continue;const{x,y}=tp(t);
+    if(draggingCard){const dpr=DPR(),cw=canvas.width/dpr,ch=canvas.height/dpr,b=cardBounds();state.cardPos.x=Math.max(0,Math.min(cw-b.pw,x-cardDragOffX));state.cardPos.y=Math.max(0,Math.min(ch-b.ph,y-cardDragOffY));render();continue;}
+    if(rotating){const angle=Math.atan2(y-rotating.y,x-rotating.x);const delta=(angle-rotStartAngle)*180/Math.PI;rotating.rot=((rotStartRot+delta)%360+360)%360;render();continue;}const d=Math.abs(x-(dragging?dragging.x+dragOffX:x))+Math.abs(y-(dragging?dragging.y+dragOffY:y));if(d>6)touchMoved=true;if(dragging){dragging.x=x-dragOffX;dragging.y=y-dragOffY;render();}}
 },{passive:false});
 canvas.addEventListener('touchend',e=>{
   e.preventDefault();pinchStartDist=null;pinchFlower=null;if(longPressTimer){clearTimeout(longPressTimer);longPressTimer=null;}
-  rotating=null;
+  rotating=null;draggingCard=false;
   for(let i=0;i<e.changedTouches.length;i++){const t=e.changedTouches[i];if(t.identifier!==touchId)continue;const{x,y}=tp(t);if(!touchMoved&&!dragging){deselect();const snap=snapToStem(x,y);snapshot();state.flowers.push({id:Date.now(),type:selectedFlowerType,x:snap.x,y:snap.y,petalColor:selectedPetalColor,stemColor:selectedStemColor,size:flowerSize,rot:snap.rot,petalCount});if(snap.snapped)toast('Snapped to stem');render();}dragging=null;touchId=null;}
 },{passive:false});
 function tp(t){const r=canvas.getBoundingClientRect();return{x:t.clientX-r.left,y:t.clientY-r.top};}
@@ -742,7 +783,12 @@ function buildMessagePanel(container){
     fr.appendChild(chip);
   });fl.append(flLbl,fr);wrap.appendChild(fl);
   const prevLbl=el('p','sec-label');prevLbl.style.marginTop='8px';prevLbl.textContent='Preview';
-  const prev=el('div','card-preview');const pm=el('div','card-preview-msg');pm.style.fontStyle='italic';pm.style.color='#aaa';pm.textContent='Your message will appear here…';const pf=el('div','card-preview-from');prev.append(pm,pf);wrap.append(prevLbl,prev);container.appendChild(wrap);
+  const prev=el('div','card-preview');const pm=el('div','card-preview-msg');pm.style.fontStyle='italic';pm.style.color='#aaa';pm.textContent='Your message will appear here…';const pf=el('div','card-preview-from');prev.append(pm,pf);wrap.append(prevLbl,prev);
+  const resetBtn=el('button','btn-sm');resetBtn.textContent='↖ Reset card position';
+  resetBtn.style.cssText='margin-top:10px;width:100%;text-align:center;padding:7px 0';
+  resetBtn.onclick=()=>{state.cardPos.x=null;state.cardPos.y=null;render();toast('Card position reset');};
+  wrap.appendChild(resetBtn);
+  container.appendChild(wrap);
   const fm=CARD_FONTS.find(f=>f.id===state.message.font)||CARD_FONTS[0];pm.style.fontFamily=fm.style;pf.style.fontFamily=fm.style;
   if(state.message.text||state.message.to){pm.style.color='#2c2c2c';pm.textContent=(state.message.to?'To '+state.message.to+': ':'')+state.message.text;}
   if(state.message.from)pf.textContent='— '+state.message.from;
