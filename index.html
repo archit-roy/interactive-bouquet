@@ -363,9 +363,19 @@ function drawExportFrame(c,w,h,id){
 }
 
 // ══ SNAP TO STEM ══════════════════════════════════════════════
+function getEffectiveVaseScale(){
+  // Same clamping logic as drawVase — keeps mouth position in sync with drawing
+  const dpr=DPR(),cw=canvas.width/dpr,ch=canvas.height/dpr;
+  const VASE_H={classic:180,cylinder:200,bulb:200,tall:240,wide:160};
+  const VASE_W={classic:140,cylinder:90, bulb:140,tall:100,wide:172};
+  const scH=(ch*0.48)/(VASE_H[state.vase.type]||200);
+  const scW=(cw*0.88)/(VASE_W[state.vase.type]||140);
+  return Math.min(state.vase.scale,scH,scW);
+}
 function getVaseMouth(){
-  const dpr=DPR(),cw=canvas.width/dpr,ch=canvas.height/dpr,sc=state.vase.scale;
+  const dpr=DPR(),cw=canvas.width/dpr,ch=canvas.height/dpr;
   if(state.vase.type==='none')return null;
+  const sc=getEffectiveVaseScale();
   const heights={classic:178,cylinder:198,bulb:198,tall:238,wide:158};
   const mouthY=ch-8-(heights[state.vase.type]||160)*sc;
   return{x:cw/2,y:mouthY};
@@ -428,7 +438,8 @@ function dLily(f,s,pc){const c=f.petalColor||'#c084fc';for(let i=0;i<pc;i++){ctx
 function dSunflower(f,s,pc){const c=f.petalColor||'#fbbf24';for(let i=0;i<pc+4;i++){ctx.save();ctx.rotate((i/(pc+4))*Math.PI*2);ctx.beginPath();ctx.ellipse(0,-f.size*.52,f.size*.11,f.size*.3,0,0,Math.PI*2);ctx.fillStyle=c;ctx.globalAlpha=.85;ctx.fill();ctx.restore();}const g=ctx.createRadialGradient(0,0,0,0,0,f.size*.26);g.addColorStop(0,'#4a1505');g.addColorStop(1,'#92400e');ctx.beginPath();ctx.arc(0,0,f.size*.26,0,Math.PI*2);ctx.fillStyle=g;ctx.globalAlpha=1;ctx.fill();}
 function dLavender(f,s){const c=f.petalColor||'#a78bfa',sl=f.size;for(let i=0;i<8;i++){const t=i/8,side=i%2===0?-1:1,y=-sl*.6-t*sl*.35;ctx.beginPath();ctx.ellipse(side*f.size*.12,y,f.size*.1,f.size*.14,side*.3,0,Math.PI*2);ctx.fillStyle=i<3?darken(c,10):c;ctx.globalAlpha=.82;ctx.fill();}ctx.beginPath();ctx.ellipse(0,-sl*.95,f.size*.09,f.size*.16,0,0,Math.PI*2);ctx.fillStyle=lighten(c,15);ctx.globalAlpha=.8;ctx.fill();}
 function drawVase(v){
-  if(v.type==='none')return;const dpr=DPR(),cw=canvas.width/dpr,ch=canvas.height/dpr,sc=v.scale;
+  if(v.type==='none')return;const dpr=DPR(),cw=canvas.width/dpr,ch=canvas.height/dpr;
+  const sc=getEffectiveVaseScale(); // auto-clamped to fit canvas on any screen
   ctx.save();ctx.translate(cw/2,ch-8);
   const g=ctx.createLinearGradient(-80*sc,0,80*sc,0);g.addColorStop(0,darken(v.color,20));g.addColorStop(.3,lighten(v.color,15));g.addColorStop(.7,v.color);g.addColorStop(1,darken(v.color,30));
   ctx.fillStyle=g;ctx.strokeStyle=lighten(v.color,10);ctx.lineWidth=1;ctx.globalAlpha=1;
