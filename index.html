@@ -403,18 +403,18 @@ function drawFlower(f){
     const rh=rotHandlePos(f);
     const lrx=rh.x-f.x, lry=rh.y-f.y; // to local space (ctx is already translated+rotated)
     // stem line from ring to handle
-    ctx.beginPath();ctx.moveTo(0,-f.size*.72);ctx.lineTo(0,-(f.size*.72+22));
+    ctx.beginPath();ctx.moveTo(0,-f.size*.72);ctx.lineTo(0,-(f.size*.72+28));
     ctx.strokeStyle='rgba(201,168,76,.7)';ctx.lineWidth=1.2;ctx.setLineDash([3,3]);ctx.stroke();ctx.setLineDash([]);
     // handle circle
-    ctx.beginPath();ctx.arc(0,-(f.size*.72+22),7,0,Math.PI*2);
+    ctx.beginPath();ctx.arc(0,-(f.size*.72+28),11,0,Math.PI*2);
     ctx.fillStyle=rotating===f?'#c9a84c':'rgba(201,168,76,.25)';ctx.fill();
     ctx.strokeStyle='#c9a84c';ctx.lineWidth=1.5;ctx.stroke();
     // rotate arrow icon inside handle
     ctx.save();ctx.strokeStyle=rotating===f?'#111':'rgba(201,168,76,.95)';ctx.lineWidth=1.2;
-    ctx.beginPath();ctx.arc(0,-(f.size*.72+22),3.5,-Math.PI*.7,Math.PI*.7);ctx.stroke();
-    ctx.beginPath();ctx.moveTo(Math.cos(Math.PI*.7)*3.5,Math.sin(Math.PI*.7)*3.5-(f.size*.72+22));
-    ctx.lineTo(Math.cos(Math.PI*.7)*3.5+2.5,Math.sin(Math.PI*.7)*3.5-(f.size*.72+22)-2);
-    ctx.lineTo(Math.cos(Math.PI*.7)*3.5-2,Math.sin(Math.PI*.7)*3.5-(f.size*.72+22)-1.5);
+    ctx.beginPath();ctx.arc(0,-(f.size*.72+28),5,-Math.PI*.7,Math.PI*.7);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(Math.cos(Math.PI*.7)*5,Math.sin(Math.PI*.7)*5-(f.size*.72+28));
+    ctx.lineTo(Math.cos(Math.PI*.7)*5+3,Math.sin(Math.PI*.7)*5-(f.size*.72+28)-3);
+    ctx.lineTo(Math.cos(Math.PI*.7)*5-2.5,Math.sin(Math.PI*.7)*5-(f.size*.72+28)-1.5);
     ctx.stroke();ctx.restore();
   } else if(hoveredFlower===f){
     ctx.beginPath();ctx.arc(0,0,f.size*.7,0,Math.PI*2);ctx.strokeStyle='rgba(201,168,76,.4)';ctx.lineWidth=1.5;ctx.setLineDash([4,3]);ctx.stroke();ctx.setLineDash([]);
@@ -546,7 +546,7 @@ function sizeCanvas(){
 // Returns the world-space position of the rotate handle for a flower
 function rotHandlePos(f){
   const rotRad=(f.rot||0)*Math.PI/180;
-  const handleDist=f.size*.72+22; // ring radius + stem
+  const handleDist=f.size*.72+28; // ring radius + stem (must match draw code)
   return{
     x:f.x+Math.cos(rotRad-Math.PI/2)*handleDist,
     y:f.y+Math.sin(rotRad-Math.PI/2)*handleDist
@@ -556,7 +556,7 @@ function hitRotHandle(x,y){
   if(!selectedFlower)return false;
   const h=rotHandlePos(selectedFlower);
   const dx=x-h.x,dy=y-h.y;
-  return Math.sqrt(dx*dx+dy*dy)<12; // 12px hit radius
+  return Math.sqrt(dx*dx+dy*dy)<20; // 20px hit radius — generous for touch
 }
 function hitTest(x,y){for(let i=state.flowers.length-1;i>=0;i--){const f=state.flowers[i],dx=x-f.x,dy=y-f.y;if(Math.sqrt(dx*dx+dy*dy)<f.size*.75)return f;}return null;}
 
@@ -586,18 +586,18 @@ function updHist(){document.getElementById('btnUndo').disabled=!undoStack.length
 canvas.addEventListener('mousedown',e=>{
   if(e.button===2)return;
   const r=canvas.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;
-  // 1. Card drag
-  if(hitTestCard(x,y)){
-    const b=cardBounds();
-    draggingCard=true;cardDragOffX=x-b.px;cardDragOffY=y-b.py;
-    canvas.style.cursor='grabbing';return;
-  }
-  // 2. Rotate handle
+  // 1. Rotate handle — MUST be checked first, highest priority
   if(hitRotHandle(x,y)){
     rotating=selectedFlower;
     rotStartAngle=Math.atan2(y-rotating.y,x-rotating.x);
     rotStartRot=rotating.rot||0;
     snapshot();canvas.style.cursor='alias';return;
+  }
+  // 2. Card drag
+  if(hitTestCard(x,y)){
+    const b=cardBounds();
+    draggingCard=true;cardDragOffX=x-b.px;cardDragOffY=y-b.py;
+    canvas.style.cursor='grabbing';return;
   }
   // 3. Flowers
   const hit=hitTest(x,y);
@@ -623,12 +623,12 @@ canvas.addEventListener('mousemove',e=>{
   }
   if(dragging){dragging.x=x-dragOffX;dragging.y=y-dragOffY;render();}
   else{
-    const onCard=hitTestCard(x,y);
-    const h=onCard?null:hitTest(x,y);
-    const onHandle=!onCard&&hitRotHandle(x,y);
+    const onHandle=hitRotHandle(x,y); // handle has priority
+    const onCard=!onHandle&&hitTestCard(x,y);
+    const h=(!onHandle&&!onCard)?hitTest(x,y):null;
     const prev=hoveredFlower;const prevCard=cardHovered;
     hoveredFlower=h;cardHovered=onCard;
-    canvas.style.cursor=onCard?'grab':onHandle?'alias':h?'grab':'crosshair';
+    canvas.style.cursor=onHandle?'alias':onCard?'grab':h?'grab':'crosshair';
     if(h!==prev||onCard!==prevCard||onHandle)render();
   }
 });
@@ -648,10 +648,10 @@ canvas.addEventListener('touchstart',e=>{
   e.preventDefault();
   if(e.touches.length===2){clearTimeout(longPressTimer);const r=canvas.getBoundingClientRect(),mid={x:(e.touches[0].clientX+e.touches[1].clientX)/2-r.left,y:(e.touches[0].clientY+e.touches[1].clientY)/2-r.top};pinchFlower=dragging||hitTest(mid.x,mid.y);pinchStartDist=d2t(e.touches[0],e.touches[1]);if(pinchFlower)snapshot();dragging=null;return;}
   const t=e.touches[0];touchId=t.identifier;touchMoved=false;const{x,y}=tp(t),hit=hitTest(x,y);
+  if(hitRotHandle(x,y)){rotating=selectedFlower;rotStartAngle=Math.atan2(y-rotating.y,x-rotating.x);rotStartRot=rotating.rot||0;snapshot();touchMoved=true;return;}
   if(hitTestCard(x,y)){
     const b=cardBounds();draggingCard=true;cardDragOffX=x-b.px;cardDragOffY=y-b.py;touchMoved=true;return;
   }
-  if(hitRotHandle(x,y)){rotating=selectedFlower;rotStartAngle=Math.atan2(y-rotating.y,x-rotating.x);rotStartRot=rotating.rot||0;snapshot();touchMoved=true;return;}
   if(hit){dragging=hit;dragOffX=x-hit.x;dragOffY=y-hit.y;state.flowers=state.flowers.filter(f=>f!==hit);state.flowers.push(hit);snapshot();selectFlower(hit);longPressTimer=setTimeout(()=>{if(!touchMoved){snapshot();if(selectedFlower===hit)selectFlower(null);state.flowers=state.flowers.filter(f=>f!==hit);dragging=null;hoveredFlower=null;render();toast('Removed');longPressTimer=null;}},600);}
   else{longPressTimer=setTimeout(()=>{longPressTimer=null;},600);}
 },{passive:false});
