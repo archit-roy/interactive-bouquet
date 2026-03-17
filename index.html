@@ -281,6 +281,7 @@ let selectedFlowerType='rose',selectedPetalColor='#e84a7a',selectedStemColor='#1
 let flowerSize=48,flowerRot=0,petalCount=6;
 let undoStack=[],redoStack=[];
 let dragging=null,dragOffX=0,dragOffY=0,hoveredFlower=null,selectedFlower=null;
+let rotating=null,rotStartAngle=0,rotStartRot=0; // drag-to-rotate state
 let isDark=true;
 let touchId=null,longPressTimer=null,pinchStartDist=null,pinchFlower=null,touchMoved=false;
 
@@ -394,8 +395,26 @@ function drawFlower(f){
   const pc=f.petalCount||6;
   if(f.type==='rose')dRose(f,s,pc);else if(f.type==='tulip')dTulip(f,s);else if(f.type==='daisy')dDaisy(f,s,pc);else if(f.type==='lily')dLily(f,s,pc);else if(f.type==='sunflower')dSunflower(f,s,pc);else if(f.type==='lavender')dLavender(f,s);
   if(selectedFlower===f){
+    // selection ring
     ctx.beginPath();ctx.arc(0,0,f.size*.72,0,Math.PI*2);ctx.strokeStyle='rgba(201,168,76,.95)';ctx.lineWidth=2;ctx.setLineDash([]);ctx.stroke();
     for(let i=0;i<4;i++){const a=(i/4)*Math.PI*2;ctx.beginPath();ctx.arc(Math.cos(a)*f.size*.72,Math.sin(a)*f.size*.72,3.5,0,Math.PI*2);ctx.fillStyle='#c9a84c';ctx.fill();}
+    // rotate handle — sits above the flower (at -90° in local space = straight up)
+    const rh=rotHandlePos(f);
+    const lrx=rh.x-f.x, lry=rh.y-f.y; // to local space (ctx is already translated+rotated)
+    // stem line from ring to handle
+    ctx.beginPath();ctx.moveTo(0,-f.size*.72);ctx.lineTo(0,-(f.size*.72+22));
+    ctx.strokeStyle='rgba(201,168,76,.7)';ctx.lineWidth=1.2;ctx.setLineDash([3,3]);ctx.stroke();ctx.setLineDash([]);
+    // handle circle
+    ctx.beginPath();ctx.arc(0,-(f.size*.72+22),7,0,Math.PI*2);
+    ctx.fillStyle=rotating===f?'#c9a84c':'rgba(201,168,76,.25)';ctx.fill();
+    ctx.strokeStyle='#c9a84c';ctx.lineWidth=1.5;ctx.stroke();
+    // rotate arrow icon inside handle
+    ctx.save();ctx.strokeStyle=rotating===f?'#111':'rgba(201,168,76,.95)';ctx.lineWidth=1.2;
+    ctx.beginPath();ctx.arc(0,-(f.size*.72+22),3.5,-Math.PI*.7,Math.PI*.7);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(Math.cos(Math.PI*.7)*3.5,Math.sin(Math.PI*.7)*3.5-(f.size*.72+22));
+    ctx.lineTo(Math.cos(Math.PI*.7)*3.5+2.5,Math.sin(Math.PI*.7)*3.5-(f.size*.72+22)-2);
+    ctx.lineTo(Math.cos(Math.PI*.7)*3.5-2,Math.sin(Math.PI*.7)*3.5-(f.size*.72+22)-1.5);
+    ctx.stroke();ctx.restore();
   } else if(hoveredFlower===f){
     ctx.beginPath();ctx.arc(0,0,f.size*.7,0,Math.PI*2);ctx.strokeStyle='rgba(201,168,76,.4)';ctx.lineWidth=1.5;ctx.setLineDash([4,3]);ctx.stroke();ctx.setLineDash([]);
   }
@@ -502,7 +521,22 @@ function sizeCanvas(){
   render();
 }
 
-// ══ HIT TEST ══════════════════════════════════════════════════
+// ══ HIT TEST + ROTATE HANDLE ════════════════════════════════
+// Returns the world-space position of the rotate handle for a flower
+function rotHandlePos(f){
+  const rotRad=(f.rot||0)*Math.PI/180;
+  const handleDist=f.size*.72+22; // ring radius + stem
+  return{
+    x:f.x+Math.cos(rotRad-Math.PI/2)*handleDist,
+    y:f.y+Math.sin(rotRad-Math.PI/2)*handleDist
+  };
+}
+function hitRotHandle(x,y){
+  if(!selectedFlower)return false;
+  const h=rotHandlePos(selectedFlower);
+  const dx=x-h.x,dy=y-h.y;
+  return Math.sqrt(dx*dx+dy*dy)<12; // 12px hit radius
+}
 function hitTest(x,y){for(let i=state.flowers.length-1;i>=0;i--){const f=state.flowers[i],dx=x-f.x,dy=y-f.y;if(Math.sqrt(dx*dx+dy*dy)<f.size*.75)return f;}return null;}
 
 // ══ SELECT / EDIT ═════════════════════════════════════════════
@@ -530,16 +564,39 @@ function updHist(){document.getElementById('btnUndo').disabled=!undoStack.length
 // ══ MOUSE EVENTS ══════════════════════════════════════════════
 canvas.addEventListener('mousedown',e=>{
   if(e.button===2)return;
-  const r=canvas.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top,hit=hitTest(x,y);
+  const r=canvas.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;
+  // Check rotate handle first (only when a flower is selected)
+  if(hitRotHandle(x,y)){
+    rotating=selectedFlower;
+    rotStartAngle=Math.atan2(y-rotating.y,x-rotating.x);
+    rotStartRot=rotating.rot||0;
+    snapshot();canvas.style.cursor='alias';return;
+  }
+  const hit=hitTest(x,y);
   if(hit){dragging=hit;dragOffX=x-hit.x;dragOffY=y-hit.y;state.flowers=state.flowers.filter(f=>f!==hit);state.flowers.push(hit);snapshot();canvas.style.cursor='grabbing';selectFlower(hit);}
   else{deselect();const snap=snapToStem(x,y);snapshot();state.flowers.push({id:Date.now(),type:selectedFlowerType,x:snap.x,y:snap.y,petalColor:selectedPetalColor,stemColor:selectedStemColor,size:flowerSize,rot:snap.rot,petalCount});if(snap.snapped)toast('Snapped to stem');document.getElementById('statusMode').textContent='Placed '+selectedFlowerType;render();}
 });
 canvas.addEventListener('mousemove',e=>{
   const r=canvas.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;
+  if(rotating){
+    const angle=Math.atan2(y-rotating.y,x-rotating.x);
+    const delta=(angle-rotStartAngle)*180/Math.PI;
+    rotating.rot=((rotStartRot+delta)%360+360)%360;
+    // sync rotation slider in edit panel if visible
+    const sliders=document.querySelectorAll('#flowersPanel input[type=range], #sheetContent input[type=range]');
+    sliders.forEach(sl=>{if(sl._isRotSlider){sl.value=Math.round(rotating.rot<=180?rotating.rot:rotating.rot-360);const lv=sl.parentElement.querySelector('span:last-child');if(lv)lv.textContent=sl.value+'°';}});
+    canvas.style.cursor='alias';render();return;
+  }
   if(dragging){dragging.x=x-dragOffX;dragging.y=y-dragOffY;render();}
-  else{const h=hitTest(x,y);const prev=hoveredFlower;hoveredFlower=h;canvas.style.cursor=h?'grab':'crosshair';if(h!==prev)render();}
+  else{
+    const h=hitTest(x,y);
+    const onHandle=hitRotHandle(x,y);
+    const prev=hoveredFlower;hoveredFlower=h;
+    canvas.style.cursor=onHandle?'alias':h?'grab':'crosshair';
+    if(h!==prev||onHandle)render();
+  }
 });
-canvas.addEventListener('mouseup',()=>{dragging=null;canvas.style.cursor=selectedFlower?'grab':'crosshair';});
+canvas.addEventListener('mouseup',()=>{if(rotating){rotating=null;}dragging=null;canvas.style.cursor=selectedFlower?'alias':'crosshair';});
 canvas.addEventListener('mouseleave',()=>{dragging=null;hoveredFlower=null;render();});
 canvas.addEventListener('contextmenu',e=>{
   e.preventDefault();const r=canvas.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top,h=hitTest(x,y);
@@ -555,16 +612,18 @@ canvas.addEventListener('touchstart',e=>{
   e.preventDefault();
   if(e.touches.length===2){clearTimeout(longPressTimer);const r=canvas.getBoundingClientRect(),mid={x:(e.touches[0].clientX+e.touches[1].clientX)/2-r.left,y:(e.touches[0].clientY+e.touches[1].clientY)/2-r.top};pinchFlower=dragging||hitTest(mid.x,mid.y);pinchStartDist=d2t(e.touches[0],e.touches[1]);if(pinchFlower)snapshot();dragging=null;return;}
   const t=e.touches[0];touchId=t.identifier;touchMoved=false;const{x,y}=tp(t),hit=hitTest(x,y);
+  if(hitRotHandle(x,y)){rotating=selectedFlower;rotStartAngle=Math.atan2(y-rotating.y,x-rotating.x);rotStartRot=rotating.rot||0;snapshot();touchMoved=true;return;}
   if(hit){dragging=hit;dragOffX=x-hit.x;dragOffY=y-hit.y;state.flowers=state.flowers.filter(f=>f!==hit);state.flowers.push(hit);snapshot();selectFlower(hit);longPressTimer=setTimeout(()=>{if(!touchMoved){snapshot();if(selectedFlower===hit)selectFlower(null);state.flowers=state.flowers.filter(f=>f!==hit);dragging=null;hoveredFlower=null;render();toast('Removed');longPressTimer=null;}},600);}
   else{longPressTimer=setTimeout(()=>{longPressTimer=null;},600);}
 },{passive:false});
 canvas.addEventListener('touchmove',e=>{
   e.preventDefault();
   if(e.touches.length===2&&pinchFlower&&pinchStartDist){const d=d2t(e.touches[0],e.touches[1]);pinchFlower.size=Math.max(18,Math.min(100,pinchFlower.size*(d/pinchStartDist)));pinchStartDist=d;render();return;}
-  for(let i=0;i<e.changedTouches.length;i++){const t=e.changedTouches[i];if(t.identifier!==touchId)continue;const{x,y}=tp(t);const d=Math.abs(x-(dragging?dragging.x+dragOffX:x))+Math.abs(y-(dragging?dragging.y+dragOffY:y));if(d>6)touchMoved=true;if(dragging){dragging.x=x-dragOffX;dragging.y=y-dragOffY;render();}}
+  for(let i=0;i<e.changedTouches.length;i++){const t=e.changedTouches[i];if(t.identifier!==touchId)continue;const{x,y}=tp(t);if(rotating){const angle=Math.atan2(y-rotating.y,x-rotating.x);const delta=(angle-rotStartAngle)*180/Math.PI;rotating.rot=((rotStartRot+delta)%360+360)%360;render();continue;}const d=Math.abs(x-(dragging?dragging.x+dragOffX:x))+Math.abs(y-(dragging?dragging.y+dragOffY:y));if(d>6)touchMoved=true;if(dragging){dragging.x=x-dragOffX;dragging.y=y-dragOffY;render();}}
 },{passive:false});
 canvas.addEventListener('touchend',e=>{
   e.preventDefault();pinchStartDist=null;pinchFlower=null;if(longPressTimer){clearTimeout(longPressTimer);longPressTimer=null;}
+  rotating=null;
   for(let i=0;i<e.changedTouches.length;i++){const t=e.changedTouches[i];if(t.identifier!==touchId)continue;const{x,y}=tp(t);if(!touchMoved&&!dragging){deselect();const snap=snapToStem(x,y);snapshot();state.flowers.push({id:Date.now(),type:selectedFlowerType,x:snap.x,y:snap.y,petalColor:selectedPetalColor,stemColor:selectedStemColor,size:flowerSize,rot:snap.rot,petalCount});if(snap.snapped)toast('Snapped to stem');render();}dragging=null;touchId=null;}
 },{passive:false});
 function tp(t){const r=canvas.getBoundingClientRect();return{x:t.clientX-r.left,y:t.clientY-r.top};}
@@ -624,7 +683,7 @@ function buildEditPanel(container,f){
   addLbl(container,'Petal Colour');colRow(container,PETAL_COLORS,()=>f.petalColor,c=>{snapshot();f.petalColor=c;render();});
   addLbl(container,'Stem Colour');colRow(container,STEM_COLORS,()=>f.stemColor,c=>{snapshot();f.stemColor=c;render();});
   addSldr(container,'Bloom Size',18,100,Math.round(f.size),'',v=>{f.size=v;render();});
-  addSldr(container,'Rotation',-180,180,Math.round(f.rot||0),'°',v=>{f.rot=v;render();});
+  addSldr(container,'Rotation',-180,180,Math.round((f.rot||0)<=180?(f.rot||0):(f.rot||0)-360),'°',v=>{f.rot=((v%360)+360)%360;render();},{mark:'rot'});
   addSldr(container,'Petal Count',4,12,f.petalCount||6,'',v=>{f.petalCount=v;render();});
   const done=el('button','btn-gold');done.style.cssText='width:100%;justify-content:center;margin-top:6px';done.textContent='Done Editing';done.onclick=()=>selectFlower(null);container.appendChild(done);
 }
@@ -716,6 +775,7 @@ function addSldr(container,label,min,max,val,unit,onChange,opts={}){
   const wrap=el('div','slider-wrap'),lrow=el('div','slider-label'),ltxt=el('span'),lval=el('span');
   ltxt.textContent=label;lval.textContent=opts.t?opts.t(val):(val+unit);lrow.append(ltxt,lval);
   const inp=document.createElement('input');inp.type='range';inp.min=min;inp.max=max;inp.value=val;
+  if(opts.mark)inp._isRotSlider=true;
   inp.addEventListener('input',()=>{const v=+inp.value;lval.textContent=opts.t?opts.t(v):(v+unit);onChange(v);});
   wrap.append(lrow,inp);container.appendChild(wrap);
 }
