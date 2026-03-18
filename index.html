@@ -532,6 +532,8 @@ function render(){
   drawSnapGuide();
   drawVase(state.vase);
   const sorted=[...state.flowers].sort((a,b)=>a.y-b.y);
+  // Always draw selected flower last so it sits on top of everything
+  if(selectedFlower){const i=sorted.indexOf(selectedFlower);if(i>-1){sorted.splice(i,1);sorted.push(selectedFlower);}}
   for(const f of sorted)drawFlower(f);
   drawCard();
   document.getElementById('statusCount').textContent=state.flowers.length;
@@ -613,7 +615,14 @@ canvas.addEventListener('mousedown',e=>{
   // 3. Flowers
   const hit=hitTest(x,y);
   if(hit){dragging=hit;dragOffX=x-hit.x;dragOffY=y-hit.y;state.flowers=state.flowers.filter(f=>f!==hit);state.flowers.push(hit);snapshot();canvas.style.cursor='grabbing';selectFlower(hit);}
-  else{deselect();const snap=snapToStem(x,y);snapshot();state.flowers.push({id:Date.now(),type:selectedFlowerType,x:snap.x,y:snap.y,petalColor:selectedPetalColor,stemColor:selectedStemColor,size:flowerSize,rot:snap.rot,petalCount});if(snap.snapped)toast('Snapped to stem');document.getElementById('statusMode').textContent='Placed '+selectedFlowerType;render();}
+  else{
+    const snap=snapToStem(x,y);
+    snapshot();
+    const newF={id:Date.now(),type:selectedFlowerType,x:snap.x,y:snap.y,petalColor:selectedPetalColor,stemColor:selectedStemColor,size:flowerSize,rot:snap.rot,petalCount};
+    state.flowers.push(newF);
+    if(snap.snapped)toast('Snapped to stem');
+    selectFlower(newF); // selects, opens edit panel, and calls render()
+  }
 });
 canvas.addEventListener('mousemove',e=>{
   const r=canvas.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;
@@ -676,7 +685,7 @@ canvas.addEventListener('touchmove',e=>{
 canvas.addEventListener('touchend',e=>{
   e.preventDefault();pinchStartDist=null;pinchFlower=null;if(longPressTimer){clearTimeout(longPressTimer);longPressTimer=null;}
   rotating=null;draggingCard=false;
-  for(let i=0;i<e.changedTouches.length;i++){const t=e.changedTouches[i];if(t.identifier!==touchId)continue;const{x,y}=tp(t);if(!touchMoved&&!dragging){deselect();const snap=snapToStem(x,y);snapshot();state.flowers.push({id:Date.now(),type:selectedFlowerType,x:snap.x,y:snap.y,petalColor:selectedPetalColor,stemColor:selectedStemColor,size:flowerSize,rot:snap.rot,petalCount});if(snap.snapped)toast('Snapped to stem');render();}dragging=null;touchId=null;}
+  for(let i=0;i<e.changedTouches.length;i++){const t=e.changedTouches[i];if(t.identifier!==touchId)continue;const{x,y}=tp(t);if(!touchMoved&&!dragging){const snap=snapToStem(x,y);snapshot();const newF={id:Date.now(),type:selectedFlowerType,x:snap.x,y:snap.y,petalColor:selectedPetalColor,stemColor:selectedStemColor,size:flowerSize,rot:snap.rot,petalCount};state.flowers.push(newF);if(snap.snapped)toast('Snapped to stem');selectFlower(newF);}dragging=null;touchId=null;}
 },{passive:false});
 function tp(t){const r=canvas.getBoundingClientRect();return{x:t.clientX-r.left,y:t.clientY-r.top};}
 function d2t(t1,t2){const dx=t1.clientX-t2.clientX,dy=t1.clientY-t2.clientY;return Math.sqrt(dx*dx+dy*dy);}
@@ -719,7 +728,7 @@ function buildEditPanel(container,f){
   const hdr=el('div','edit-header');const title=el('div','edit-title');title.textContent='Edit Flower';
   const acts=el('div','edit-actions');
   const dupBtn=el('button','btn-sm');dupBtn.textContent='Duplicate';
-  dupBtn.onclick=()=>{snapshot();const c={...f,id:Date.now(),x:f.x+22,y:f.y-22};state.flowers.push(c);render();toast('Duplicated');};
+  dupBtn.onclick=()=>{snapshot();const c={...f,id:Date.now(),x:f.x+22,y:f.y+22};state.flowers.push(c);render();toast('Duplicated');};
   const delBtn=el('button','btn-sm danger');delBtn.textContent='Delete';
   delBtn.onclick=()=>{snapshot();state.flowers=state.flowers.filter(fl=>fl!==f);selectFlower(null);render();toast('Deleted');};
   acts.append(dupBtn,delBtn);hdr.append(title,acts);container.appendChild(hdr);
